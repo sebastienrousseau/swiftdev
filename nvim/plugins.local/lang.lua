@@ -1,5 +1,5 @@
 -- swiftdev — Swift language wiring for Neovim (langdev plugins.local spec)
--- SPDX-License-Identifier: MIT
+-- SPDX-License-Identifier: Apache-2.0 OR MIT
 --
 -- Auto-imported by the user's dotfiles Neovim config via its `plugins.local`
 -- convention. sourcekit-lsp ships WITH the Swift toolchain in the official

@@ -1,5 +1,5 @@
 # /etc/profile.d/swift.sh — Swift language fragment (swiftdev)
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0 OR MIT
 #
 # Installed to /etc/profile.d (root-owned, 0644) and sourced by /etc/profile
 # for login shells — kept OUT of the user's chezmoi dotfiles so those stay

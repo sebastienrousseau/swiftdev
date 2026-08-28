@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.9
 # swiftdev Containerfile — OCI, builds with Docker AND Podman.
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0 OR MIT
 #
 # Multi-stage, hardened dev image for Swift, built on the langdev
 # "dotfiles foundation": the developer environment (shell, editor, tmux)
@@ -163,7 +163,7 @@ ARG USER_GID=1000
 
 LABEL org.opencontainers.image.title="swiftdev" \
       org.opencontainers.image.description="Portable, disposable Swift dev environment (langdev suite)" \
-      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.licenses="Apache-2.0 OR MIT" \
       org.opencontainers.image.vendor="Sebastien Rousseau"
 
 # Runtime deps: multiplexer (tmux — available AND loaded by default via the
