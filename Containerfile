@@ -2,17 +2,22 @@
 # swiftdev Containerfile — OCI, builds with Docker AND Podman.
 # SPDX-License-Identifier: MIT
 #
-# Multi-stage, hardened dev image for Swift. Everything below the
-# "COMMON BASE" banner mirrors the langdev suite (kept in sync via
-# `make sync-common`), TRANSLATED FROM Alpine/apk TO the glibc/apt base
-# that Swift requires.
+# Multi-stage, hardened dev image for Swift, built on the langdev
+# "dotfiles foundation": the developer environment (shell, editor, tmux)
+# is the USER'S OWN chezmoi-managed dotfiles, cloned + applied at build
+# time (latest by default; pin with DOTFILES_REF). swiftdev provides only
+# the hardened base + the Swift toolchain (from the official image) + one
+# Neovim LSP drop-in and one login-shell env fragment.
 #
 # ARCHITECTURAL DEVIATION (documented in README): the rest of the langdev
-# suite builds on Alpine (musl). Swift has NO officially supported
-# musl/Alpine toolchain, so swiftdev builds on the OFFICIAL Swift image,
-# which is glibc (Ubuntu 24.04 "noble"). We keep the identical security
-# posture (non-root, read-only rootfs, cap-drop, no-new-privileges,
-# pinned+checksummed inputs) and reuse every distro-agnostic common asset.
+# suite builds on Alpine (musl) with `apk`. Swift has NO officially
+# supported musl/Alpine toolchain, so swiftdev builds on the OFFICIAL
+# Swift image, which is glibc (Ubuntu 24.04 "noble"). The foundation's
+# Alpine `env-build` and `base` stages are TRANSLATED to `apt-get
+# --no-install-recommends` (lists cleaned in the same layer) with identical
+# behaviour. The identical security posture is preserved (non-root,
+# read-only rootfs, cap-drop, no-new-privileges, pinned+checksummed
+# inputs). Every distro-agnostic common asset is reused verbatim.
 #
 # The base is pinned BY DIGEST. The Swift toolchain (swiftc, swift,
 # sourcekit-lsp, swift-format) is baked into this official image and its
@@ -25,26 +30,47 @@ ARG SWIFT_VERSION=6.3.3
 # Multi-arch index digest for `swift:6.3.3-slim` (linux/amd64 + linux/arm64).
 ARG SWIFT_DIGEST=sha256:c2b5f7c9e24f4af9ff27bfb2bff4b04d5115673f06248fd2a7423819918b7ecd
 
-###############################################################################
-# Stage: nvim-build  (COMMON — bakes the editor + plugins into the image)
-#   Debian's/Ubuntu's packaged Neovim is often too old for LazyVim, so we
-#   install a PINNED, sha256-verified Neovim release tarball from GitHub into
-#   /opt/nvim. We then run Neovim headless to install the exact plugin set
-#   from lazy-lock.json, so the runtime image needs NO network on first launch.
-###############################################################################
-FROM swift:${SWIFT_VERSION}-slim@${SWIFT_DIGEST} AS nvim-build
 ARG USERNAME=dev
 ARG USER_UID=1000
 ARG USER_GID=1000
 
+# Dotfiles source — "always the latest" by default; pin a tag/commit for
+# reproducible builds.
+ARG DOTFILES_REPO=https://github.com/sebastienrousseau/dotfiles.git
+ARG DOTFILES_REF=main
+
 # Pinned Neovim release + per-arch sha256 (verified below). Bump together.
+# Debian/Ubuntu's packaged Neovim is too old for modern LazyVim configs, so
+# we install a PINNED, sha256-verified release tarball from GitHub instead.
 ARG NEOVIM_VERSION=0.12.5
 ARG NEOVIM_SHA256_AMD64=bce0f56eda1f1b1db6eee8f4133d7a38813ea07933837dd1777411ca384c6875
 ARG NEOVIM_SHA256_ARM64=1aa5ca085249580ae0f91eb14f27ec0919773ff2d99a163d03f3d6c21ac29725
 
-# Build-time editor deps. `build-essential` + `cmake` build treesitter
-# grammars / fzf-native; `ripgrep` + `fd-find` back telescope. These stay in
-# this stage and never reach the runtime image.
+# Pinned chezmoi release + per-arch sha256 (verified below). chezmoi is NOT
+# in the default Debian/Ubuntu repos, so we install the official multi-arch
+# release archive (which contains a single top-level `chezmoi` binary) and
+# checksum-verify it — no `curl | sh`. Checksums are from the upstream
+# chezmoi_<ver>_checksums.txt.
+ARG CHEZMOI_VERSION=2.72.0
+ARG CHEZMOI_SHA256_AMD64=0d6665b96c527d57fdc562bf19e808f80f48c2d977062c03e3e65c6b09eafbce
+ARG CHEZMOI_SHA256_ARM64=e79a27621256390f03166d3965e6a1946f983a096c4d90f02c43d2aa5b563728
+
+###############################################################################
+# Stage: env-build  (COMMON — apply the user's dotfiles + bake nvim plugins)
+#   Translated from the foundation's Alpine `env-build` stage to apt. Clones
+#   and `chezmoi apply`s the user's dotfiles as the `dev` user, drops in the
+#   Swift LSP spec, then bakes the full Neovim plugin set headless so the
+#   runtime image needs NO network on first launch.
+###############################################################################
+FROM swift:${SWIFT_VERSION}-slim@${SWIFT_DIGEST} AS env-build
+ARG USERNAME USER_UID USER_GID DOTFILES_REPO DOTFILES_REF
+ARG NEOVIM_VERSION NEOVIM_SHA256_AMD64 NEOVIM_SHA256_ARM64
+ARG CHEZMOI_VERSION CHEZMOI_SHA256_AMD64 CHEZMOI_SHA256_ARM64
+
+# Tools needed to clone+apply dotfiles and compile/install nvim plugins.
+# `build-essential` + `cmake` build treesitter grammars / fzf-native;
+# `ripgrep` + `fd-find` back telescope; `fzf`/`bat` are dotfile expectations.
+# These stay in this stage and never reach the runtime image.
 # hadolint ignore=DL3008,DL3009
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
@@ -55,7 +81,12 @@ RUN apt-get update \
       cmake \
       ripgrep \
       fd-find \
+      fzf \
+      bat \
  && rm -rf /var/lib/apt/lists/*
+# Debian/Ubuntu ship these under alternate names; expose the conventional ones.
+RUN ln -sf "$(command -v fdfind)" /usr/local/bin/fd \
+ && ln -sf "$(command -v batcat)" /usr/local/bin/bat
 
 # Pinned, sha256-verified Neovim tarball -> /opt/nvim (relocatable, on PATH).
 RUN set -eux; \
@@ -73,28 +104,56 @@ RUN set -eux; \
     rm -f /tmp/nvim.tar.gz; \
     /opt/nvim/bin/nvim --version
 
+# Pinned, sha256-verified chezmoi (official release archive -> /usr/local/bin).
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in \
+      amd64) czSha256="${CHEZMOI_SHA256_AMD64}" ;; \
+      arm64) czSha256="${CHEZMOI_SHA256_ARM64}" ;; \
+      *) echo >&2 "unsupported architecture: $arch"; exit 1 ;; \
+    esac; \
+    url="https://github.com/twpayne/chezmoi/releases/download/v${CHEZMOI_VERSION}/chezmoi_${CHEZMOI_VERSION}_linux_${arch}.tar.gz"; \
+    curl -fsSL "$url" -o /tmp/chezmoi.tar.gz; \
+    echo "${czSha256}  /tmp/chezmoi.tar.gz" | sha256sum -c -; \
+    tar -xzf /tmp/chezmoi.tar.gz -C /tmp chezmoi; \
+    install -m 0755 /tmp/chezmoi /usr/local/bin/chezmoi; \
+    rm -f /tmp/chezmoi.tar.gz /tmp/chezmoi; \
+    chezmoi --version
+
 ENV PATH=/opt/nvim/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-# LazyVim starter pinned to a commit (reproducible); overridable at build.
-ARG LAZYVIM_STARTER_REF=c31e5cc9f77b16d20a693c30f28fdf907f1caf95
-ENV XDG_CONFIG_HOME=/root/.config \
-    XDG_DATA_HOME=/root/.local/share \
-    XDG_STATE_HOME=/root/.local/state \
-    XDG_CACHE_HOME=/root/.cache
-RUN git clone --filter=blob:none https://github.com/LazyVim/starter /root/.config/nvim \
- && git -C /root/.config/nvim checkout "${LAZYVIM_STARTER_REF}" \
- && rm -rf /root/.config/nvim/.git
-# Common + language plugin specs (lang.lua wires sourcekit-lsp + treesitter).
-COPY common/nvim/plugins/ /root/.config/nvim/lua/plugins/
-COPY nvim/plugins/ /root/.config/nvim/lua/plugins/
-# Reproducible plugin set: restore from committed lockfile, then sync.
-COPY nvim/lazy-lock.json /root/.config/nvim/lazy-lock.json
+# Non-root user with a real home (Debian/Ubuntu: groupadd/useradd, not adduser).
+RUN groupadd -g "${USER_GID}" "${USERNAME}" \
+ && useradd -m -u "${USER_UID}" -g "${USER_GID}" -s /bin/bash "${USERNAME}"
+
+# Distro-agnostic bootstrap script (clones + chezmoi-applies the dotfiles).
+COPY --chown=${USER_UID}:${USER_GID} common/bootstrap-dotfiles.sh /usr/local/bin/langdev-bootstrap-dotfiles
+RUN chmod 0755 /usr/local/bin/langdev-bootstrap-dotfiles
+
+USER ${USERNAME}
+ENV HOME=/home/${USERNAME} \
+    XDG_CONFIG_HOME=/home/${USERNAME}/.config \
+    XDG_DATA_HOME=/home/${USERNAME}/.local/share \
+    XDG_STATE_HOME=/home/${USERNAME}/.local/state \
+    XDG_CACHE_HOME=/home/${USERNAME}/.cache
+
+# 1) Clone + chezmoi-apply the user's dotfiles (brings bashrc, tmux, nvim…).
+RUN DOTFILES_REPO="${DOTFILES_REPO}" DOTFILES_REF="${DOTFILES_REF}" \
+      langdev-bootstrap-dotfiles
+
+# 2) Drop the Swift LSP spec into the dotfiles' nvim (auto-imported via the
+#    config's `plugins.local`), then bake the full plugin set headless so the
+#    runtime needs no network on first launch. The dotfiles bring their own
+#    lazy-lock.json; `Lazy! restore` pins to it, then sync + treesitter.
+COPY --chown=${USER_UID}:${USER_GID} nvim/plugins.local/ /home/${USERNAME}/.config/nvim/lua/plugins.local/
 RUN nvim --headless "+Lazy! restore" +qa 2>&1 | tail -n 5 || true \
- && nvim --headless "+TSUpdateSync" +qa 2>&1 | tail -n 5 || true
+ && nvim --headless "+Lazy! sync"    +qa 2>&1 | tail -n 5 || true \
+ && nvim --headless "+TSUpdateSync"  +qa 2>&1 | tail -n 5 || true
 
 ###############################################################################
 #                              COMMON BASE
-#   Same posture as the rest of the suite, on the glibc Swift base. apk -> apt.
+#   Translated from the foundation's Alpine `base` stage to apt, on the glibc
+#   Swift base. Same posture; runtime tools only (build tools stay behind).
 ###############################################################################
 FROM swift:${SWIFT_VERSION}-slim@${SWIFT_DIGEST} AS base
 
@@ -107,8 +166,10 @@ LABEL org.opencontainers.image.title="swiftdev" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.vendor="Sebastien Rousseau"
 
-# Minimal, pinned runtime deps. `tini` keeps `docker run` correct even without
-# `--init` (compose sets init:true). `ripgrep`/`fd-find` back the editor. The
+# Runtime deps: multiplexer (tmux — available AND loaded by default via the
+# entrypoint) plus the CLI tools the dotfiles expect. `tini` is PID 1 (compose
+# sets init:true). `zoxide` is in the Ubuntu 24.04 "noble" universe repo (which
+# is enabled in the official Swift/Ubuntu base), so we install it via apt. The
 # Swift toolchain (swiftc, swift, sourcekit-lsp, swift-format) is ALREADY in
 # this base image on PATH — no separate install. Versions come from the
 # digest-locked Ubuntu 24.04 apt repositories of this Swift image.
@@ -121,31 +182,32 @@ RUN apt-get update \
       less \
       ripgrep \
       fd-find \
+      fzf \
+      bat \
+      zoxide \
+      tmux \
       tini \
       tzdata \
  && rm -rf /var/lib/apt/lists/* \
  && update-ca-certificates
-# Debian/Ubuntu ship fd as `fdfind`; expose the conventional `fd` name too.
-RUN ln -sf "$(command -v fdfind)" /usr/local/bin/fd
+# Debian/Ubuntu ship these under alternate names; expose the conventional ones.
+RUN ln -sf "$(command -v fdfind)" /usr/local/bin/fd \
+ && ln -sf "$(command -v batcat)" /usr/local/bin/bat
 
-# Neovim (pinned, sha256-verified tarball from the nvim-build stage).
-COPY --from=nvim-build /opt/nvim /opt/nvim
+# Neovim (pinned, sha256-verified tarball) from the env-build stage.
+COPY --from=env-build /opt/nvim /opt/nvim
 RUN ln -sf /opt/nvim/bin/nvim /usr/local/bin/nvim
 
 # Non-root user with a real home (Debian/Ubuntu: groupadd/useradd, not adduser).
 RUN groupadd -g "${USER_GID}" "${USERNAME}" \
  && useradd -m -u "${USER_UID}" -g "${USER_GID}" -s /bin/bash "${USERNAME}"
 
-# Portable dotfiles.
-COPY --chown=${USER_UID}:${USER_GID} common/dotfiles/bashrc        /home/${USERNAME}/.bashrc
-COPY --chown=${USER_UID}:${USER_GID} common/dotfiles/bash_profile  /home/${USERNAME}/.bash_profile
-COPY --chown=${USER_UID}:${USER_GID} common/dotfiles/bash_aliases  /home/${USERNAME}/.bash_aliases
+# Bring in the fully-populated home from env-build: the applied dotfiles
+# (~/.bashrc, ~/.config/tmux, ~/.config/nvim, ~/.config/shell/*, …) plus the
+# baked nvim plugin set. One COPY captures everything chezmoi wrote.
+COPY --from=env-build --chown=${USER_UID}:${USER_GID} /home/${USERNAME} /home/${USERNAME}
 
-# Editor config + baked-in plugins/grammars from the nvim-build stage.
-COPY --from=nvim-build --chown=${USER_UID}:${USER_GID} /root/.config/nvim /home/${USERNAME}/.config/nvim
-COPY --from=nvim-build --chown=${USER_UID}:${USER_GID} /root/.local/share/nvim /home/${USERNAME}/.local/share/nvim
-
-# Entrypoint.
+# Entrypoint (tmux-loading, strict-mode).
 COPY common/entrypoint.sh /usr/local/bin/langdev-entrypoint
 RUN chmod 0755 /usr/local/bin/langdev-entrypoint \
  && mkdir -p /usr/local/lib/langdev
@@ -184,7 +246,12 @@ ENTRYPOINT ["/usr/local/bin/langdev-entrypoint"]
 FROM base AS final
 
 # Language shell fragment: Swift PATH + aliases (swift build/test/run, format).
-COPY --chown=1000:1000 dotfiles.d/swift.sh /home/dev/.bashrc.d/swift.sh
+# Installed to /etc/profile.d (root-owned, 0644) so it loads for login shells
+# WITHOUT polluting the user's pristine chezmoi dotfiles.
+USER root
+COPY dotfiles.d/swift.sh /etc/profile.d/swift.sh
+RUN chown root:root /etc/profile.d/swift.sh && chmod 0644 /etc/profile.d/swift.sh
+USER ${USERNAME}
 
 # sourcekit-lsp, swift, swiftc, swift-format are on PATH via the base image.
 ENV PATH=/home/dev/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin

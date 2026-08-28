@@ -8,9 +8,21 @@ a complete, batteries-included Swift toolchain inside a container you can
 Podman (Linux, macOS, Windows/WSL2).
 
 It ships the official, pinned Swift toolchain (`swiftc`, `swift`,
-`sourcekit-lsp`, `swift-format`) plus a pre-configured Neovim (LazyVim
-with SourceKit-LSP wired via `nvim-lspconfig`, pointed at the build-time
-`sourcekit-lsp`). No network is needed on first launch.
+`sourcekit-lsp`, `swift-format`) inside the **langdev dotfiles
+foundation**: the developer environment (shell, editor, tmux) is the
+**user's own chezmoi-managed dotfiles**, cloned and `chezmoi apply`'d at
+build time (latest by default; pin with `DOTFILES_REF`). swiftdev adds
+only one Neovim LSP drop-in (`nvim/plugins.local/lang.lua`, wiring
+SourceKit-LSP via `nvim-lspconfig`) and one login-shell env fragment. The
+Neovim plugin set is baked headless at build time, so **no network is
+needed on first launch**.
+
+- **tmux is installed and loaded by default**: the entrypoint attaches to
+  (or creates) a persistent `langdev` tmux session for interactive
+  shells. Opt out with `LANGDEV_NO_TMUX=1`.
+- The **dotfiles' Neovim config is authoritative**; swiftdev only drops
+  `nvim/plugins.local/lang.lua` into it (auto-imported via the config's
+  `plugins.local` convention) to wire the Swift LSP.
 
 ## Quick start
 
@@ -42,12 +54,26 @@ ephemeral (read-only rootfs + tmpfs), so a container is truly disposable.
 > re-verify a toolchain tarball.
 >
 > Everything else is unchanged: swiftdev **reuses every distro-agnostic
-> common asset** (dotfiles, Neovim config, entrypoint), the identical
-> hardened `compose.yaml`/`Makefile`/CI, the same non-root, read-only,
+> common asset verbatim** (`common/bootstrap-dotfiles.sh`,
+> `common/entrypoint.sh`), the identical hardened
+> `compose.yaml`/`Makefile`/CI, the same non-root, read-only,
 > `cap_drop: [ALL]`, `no-new-privileges` posture, and the same
-> pinned-and-checksummed input discipline. Where the suite template uses
-> `apk`, swiftdev uses `apt-get --no-install-recommends` with apt lists
-> cleaned in the same layer.
+> pinned-and-checksummed input discipline. The foundation's Alpine
+> `env-build` and `base` stages are **translated to `apt-get
+> --no-install-recommends`** (apt lists cleaned in the same layer) with
+> identical behaviour. Two tools that Alpine gets from `apk` are handled
+> specially on glibc:
+>
+> - **Neovim** — Ubuntu's packaged Neovim is too old for the dotfiles'
+>   config, so a **pinned, sha256-verified release tarball** is installed
+>   into `/opt/nvim`.
+> - **chezmoi** — not in the default Debian/Ubuntu repos, so the official
+>   **pinned, sha256-verified release archive** is installed into
+>   `/usr/local/bin` (no `curl | sh`).
+>
+> `zoxide` is installed via `apt` from the noble `universe` repo (enabled
+> in the official Swift/Ubuntu base). Debian's `fd-find`/`bat` binaries
+> (`fdfind`/`batcat`) are symlinked to the conventional `fd`/`bat` names.
 
 ## What's inside (pinned)
 
@@ -58,24 +84,33 @@ ephemeral (read-only rootfs + tmpfs), so a container is truly disposable.
 | SourceKit-LSP | (with `6.3.3`) | ships with the toolchain, on `PATH` at `/usr/bin` |
 | swift-format | (with `6.3.3`) | bundled with the toolchain (`swift format`) |
 | Neovim | `0.12.5` | GitHub release tarball, sha256-verified (amd64 + arm64) |
-| ripgrep / fd-find | (Ubuntu 24.04 apt) | from the digest-locked base's apt repos |
-| Neovim plugins | — | `nvim/lazy-lock.json` (regenerate with `make lock`/CI) |
+| chezmoi | `2.72.0` | GitHub release archive, sha256-verified (amd64 + arm64) |
+| Dotfiles | `DOTFILES_REF` (default `main`) | git ref of the user's dotfiles repo; recorded commit in `~/.dotfiles.commit` |
+| ripgrep / fd-find / fzf / bat / zoxide / tmux | (Ubuntu 24.04 apt) | from the digest-locked base's apt repos (`zoxide` via `universe`) |
+| Neovim plugins | — | baked headless from the dotfiles' own `lazy-lock.json` |
 
 Pinned sha256 for the Neovim tarball:
 
 - `nvim-linux-x86_64.tar.gz` → `bce0f56eda1f1b1db6eee8f4133d7a38813ea07933837dd1777411ca384c6875`
 - `nvim-linux-arm64.tar.gz` → `1aa5ca085249580ae0f91eb14f27ec0919773ff2d99a163d03f3d6c21ac29725`
 
+Pinned sha256 for the chezmoi release archive
+(`chezmoi_2.72.0_linux_<arch>.tar.gz`):
+
+- `amd64` → `0d6665b96c527d57fdc562bf19e808f80f48c2d977062c03e3e65c6b09eafbce`
+- `arm64` → `e79a27621256390f03166d3965e6a1946f983a096c4d90f02c43d2aa5b563728`
+
 Unlike the Alpine members of the suite, there is **no separate `toolchain`
 stage** to copy a relocatable prefix from — the toolchain *is* the base
-image. The `nvim-build` stage bakes the editor + plugins so the runtime
-image needs no network on first launch; build tools (`build-essential`,
-`cmake`) live only in that stage and never reach the final image.
+image. The `env-build` stage clones + `chezmoi apply`s the dotfiles and
+bakes the editor + plugins so the runtime image needs no network on first
+launch; build tools (`build-essential`, `cmake`, `chezmoi`) live only in
+that stage and never reach the final image.
 
-> **Neovim lockfile bootstrap:** `nvim/lazy-lock.json` is committed as
-> `{}` to bootstrap the build. The first CI image build (or a local
-> `nvim --headless +"Lazy! sync"`) regenerates the fully pinned lockfile;
-> commit the result to freeze the exact plugin set.
+> **Neovim plugin pinning:** the plugin set is baked from the **dotfiles'
+> own `lazy-lock.json`** (`Lazy! restore` → `sync`), so reproducibility of
+> the editor tracks the dotfiles ref. Pin `DOTFILES_REF` to a tag/commit
+> for a fully reproducible build.
 
 ## Make targets
 
@@ -89,7 +124,6 @@ image needs no network on first launch; build tools (`build-essential`,
 | `make lint` | `hadolint` the Containerfile + `shellcheck` the scripts |
 | `make scan` | Trivy vulnerability scan (HIGH/CRITICAL) of the built image |
 | `make sbom` | Generate a CycloneDX SBOM (`sbom.cdx.json`) via syft |
-| `make lock` | Regenerate `nvim/lazy-lock.json` from the built image |
 | `make sync-common` | Refresh `common/` from the langdev source |
 
 The `Makefile` auto-detects `docker` or `podman` (adding `:Z` SELinux
@@ -97,11 +131,13 @@ mount flags for Podman) so the same commands work with either engine.
 
 ## Aliases
 
-Provided by `common/dotfiles/bash_aliases` (language-agnostic) and
-`dotfiles.d/swift.sh` (Swift-specific), both sourced by the interactive
-shell.
+Language-agnostic aliases come from the **user's own dotfiles**
+(`chezmoi apply`'d at build time). Swift-specific aliases come from
+`dotfiles.d/swift.sh`, installed to `/etc/profile.d/swift.sh`
+(root-owned, `0644`) so it loads for login shells **without** polluting
+the pristine chezmoi dotfiles.
 
-### Swift (`dotfiles.d/swift.sh`)
+### Swift (`dotfiles.d/swift.sh` → `/etc/profile.d/swift.sh`)
 
 | Alias | Expands to |
 |---|---|
@@ -117,16 +153,21 @@ It does **not** propagate any host `PATH`.
 
 ## Neovim
 
-- LazyVim starter, pinned by commit and baked in at build time.
+- The **user's dotfiles Neovim config is authoritative** — cloned and
+  `chezmoi apply`'d at build time. swiftdev does not ship its own editor
+  config beyond the one LSP drop-in below.
 - Installed from a **pinned, sha256-verified Neovim release tarball**
-  (Ubuntu's packaged Neovim is too old for LazyVim), into `/opt/nvim` on
-  `PATH`.
-- Swift is configured in `nvim/plugins/lang.lua` via `nvim-lspconfig`'s
+  (Ubuntu's packaged Neovim is too old for modern configs), into
+  `/opt/nvim` on `PATH`.
+- Swift is wired by `nvim/plugins.local/lang.lua`, dropped into the
+  dotfiles' nvim at `lua/plugins.local/` (auto-imported via the config's
+  `plugins.local` convention). It configures `nvim-lspconfig`'s
   `sourcekit` server, pointed at the pre-installed `sourcekit-lsp` on
-  `PATH`; the workspace root is anchored on `Package.swift`.
-- Treesitter grammar `swift` is added on top of the common set.
-- **Mason is intentionally disabled** — the LSP is installed at build
-  time, so first launch needs no network and the image stays reproducible.
+  `PATH`; the workspace root and Swift filetypes come from lspconfig's
+  built-in `sourcekit` defaults.
+- Treesitter grammar `swift` is added on top of the dotfiles' set.
+- The LSP is installed at build time and plugins are baked headless, so
+  **first launch needs no network** and the image stays reproducible.
 
 ## Security posture
 

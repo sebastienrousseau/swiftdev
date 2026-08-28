@@ -1,12 +1,13 @@
--- swiftdev — Swift language wiring for Neovim (langdev lang.lua)
+-- swiftdev — Swift language wiring for Neovim (langdev plugins.local spec)
 -- SPDX-License-Identifier: MIT
 --
--- sourcekit-lsp ships WITH the Swift toolchain in the official Swift image
--- and lives on PATH at /usr/bin/sourcekit-lsp. Mason stays disabled (see
--- common/nvim/plugins/disabled.lua): no network on first launch, fully
--- reproducible. We wire it directly through nvim-lspconfig.
+-- Auto-imported by the user's dotfiles Neovim config via its `plugins.local`
+-- convention. sourcekit-lsp ships WITH the Swift toolchain in the official
+-- Swift image and lives on PATH at /usr/bin/sourcekit-lsp, so we wire it
+-- directly through nvim-lspconfig — no Mason, no network on first launch,
+-- fully reproducible.
 return {
-  -- Treesitter grammar for Swift (compiled at build time in nvim-build).
+  -- Treesitter grammar for Swift (compiled at build time in env-build).
   {
     "nvim-treesitter/nvim-treesitter",
     opts = function(_, opts)
