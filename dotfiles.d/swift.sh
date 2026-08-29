@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # /etc/profile.d/swift.sh — Swift language fragment (swiftdev)
 # SPDX-License-Identifier: Apache-2.0 OR MIT
 #
