@@ -180,12 +180,14 @@ RUN apt-get update \
       curl \
       git \
       less \
+      mosh \
       ripgrep \
       fd-find \
       fzf \
       bat \
       zoxide \
       tmux \
+      ttyd \
       tini \
       tzdata \
  && rm -rf /var/lib/apt/lists/* \
