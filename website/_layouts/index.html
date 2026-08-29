@@ -13,22 +13,42 @@
       <a class="btn btn-secondary btn-lg" href="https://github.com/sebastienrousseau/{{name}}" target="_blank" rel="noopener">Star on GitHub</a>
     </div>
 
-    <!-- Realistic Animated Terminal IDE & MCP Session -->
-    <figure class="mcp-term">
-      <figcaption class="mcp-term-bar">
-        <span class="mcp-term-dot dot-red" aria-hidden="true"></span>
-        <span class="mcp-term-dot dot-yellow" aria-hidden="true"></span>
-        <span class="mcp-term-dot dot-green" aria-hidden="true"></span>
-        <span class="mcp-term-title">Terminal · {{name}} stdio &amp; TMUX IDE</span>
+    <!-- Authentic Code & Terminal IDE Preview -->
+    <figure class="terminal-preview-card">
+      <figcaption class="terminal-header">
+        <div class="window-dots">
+          <span class="dot dot-red" aria-hidden="true"></span>
+          <span class="dot dot-yellow" aria-hidden="true"></span>
+          <span class="dot dot-green" aria-hidden="true"></span>
+        </div>
+        <div class="terminal-tab-bar">
+          <span class="tab-item active-tab font-mono">Sources/App/Engine.swift</span>
+          <span class="tab-item font-mono">terminal</span>
+        </div>
+        <div class="terminal-actions">
+          <span class="badge-status font-mono">● Swift 6.0 Strict Concurrency</span>
+        </div>
       </figcaption>
-      <pre class="mcp-term-body"><code><span class="mcp-tl mcp-tl-cmd mcp-tl-typed mcp-tl-t1"><span class="mcp-tl-ps" aria-hidden="true">$ </span>make up</span>
-<span class="mcp-tl mcp-tl-out mcp-tl-fade mcp-tl-f2">[OK] swiftdev ready &lt; 500ms · Swift 6.0, SourceKit-LSP active</span>
-<span class="mcp-tl mcp-tl-cmd mcp-tl-typed mcp-tl-t3"><span class="mcp-tl-ps" aria-hidden="true">$ </span>claude mcp add {{name}} -- docker exec -i {{name}} /usr/local/bin/mcp-server</span>
-<span class="mcp-tl mcp-tl-out mcp-tl-fade mcp-tl-f4">{{name}}-mcp · connected (stdio JSON-RPC 2.0)</span>
-<span class="mcp-tl mcp-tl-ask mcp-tl-typed mcp-tl-t5"><span class="mcp-tl-ps" aria-hidden="true">&gt; </span>Run swift test --enable-code-coverage and swift-format.</span>
-<span class="mcp-tl mcp-tl-out mcp-tl-fade mcp-tl-f6">dispatched: swift test --enable-code-coverage</span>
-<span class="mcp-tl mcp-tl-ok mcp-tl-fade mcp-tl-f7">✓ Test Suite 'All tests' passed · 100% branch coverage</span>
-<span class="mcp-tl mcp-tl-caret" aria-hidden="true"></span></code></pre>
+      <div class="terminal-editor-pane">
+        <pre class="editor-code font-mono"><code><span class="code-comment">// Sources/App/Engine.swift · Swift 6.0 Strict Concurrency</span>
+<span class="code-kw">public actor</span> <span class="code-type">Engine</span>: <span class="code-type">Sendable</span> {
+    <span class="code-kw">private var</span> state: <span class="code-type">State</span> = .idle
+
+    <span class="code-kw">public func</span> <span class="code-fn">dispatch</span>&lt;T: <span class="code-type">Sendable</span>&gt;(
+        _ task: <span class="code-fn">@Sendable</span> () <span class="code-kw">async throws</span> -&gt; T
+    ) <span class="code-kw">async throws</span> -&gt; T {
+        <span class="code-kw">self</span>.state = .running
+        <span class="code-kw">defer</span> { <span class="code-kw">self</span>.state = .idle }
+        <span class="code-kw">return try await</span> <span class="code-fn">task</span>()
+    }
+}</code></pre>
+      </div>
+      <div class="terminal-cli-pane font-mono">
+        <div class="cli-line"><span class="mcp-tl-ps">$ </span>swift test --enable-code-coverage &amp;&amp; swift-format lint .</div>
+        <div class="cli-out">Test Suite 'EnginePackageTests' passed at 2026-08-29 (100% branch coverage)</div>
+        <div class="cli-line"><span class="mcp-tl-ask">&gt; </span>Claude MCP: Run SourceKit-LSP code diagnostics on Linux</div>
+        <div class="cli-out cli-ok">✓ 100% tests passed · 0 concurrency warnings · SourceKit-LSP connected</div>
+      </div>
     </figure>
   </div>
 </section>
