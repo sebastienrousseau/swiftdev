@@ -1,12 +1,12 @@
 ---
 layout: index
-title: swiftdev — Portable, Hardened Swift 6.0+ AI Developer Container
-name: swiftdev
-headline: Hardened Swift 6.0+ Development Container for AI Agents
-lead: Robust Swift container preloaded with Swift 6.0+ toolchain, SourceKit-LSP, swift-format, 4-pane TMUX IDE, and stdio Model Context Protocol (MCP) server.
-permalink: /
-language: en-GB
-date: 2026-08-29
+title: "swiftdev — Portable, Hardened Swift 6.0+ AI Developer Container"
+name: "swiftdev"
+headline: "Hardened Swift 6.0+ Development Container for AI Agents"
+lead: "Robust Swift container preloaded with Swift 6.0+ toolchain, SourceKit-LSP, swift-format, 4-pane TMUX IDE, and stdio Model Context Protocol (MCP) server."
+permalink: "/"
+language: "en-GB"
+date: "2026-08-29"
 ---
 
 <section id="overview" class="section">
