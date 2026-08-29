@@ -123,8 +123,10 @@ RUN set -eux; \
 ENV PATH=/opt/nvim/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Non-root user with a real home (Debian/Ubuntu: groupadd/useradd, not adduser).
-RUN groupadd -g "${USER_GID}" "${USERNAME}" \
- && useradd -m -u "${USER_UID}" -g "${USER_GID}" -s /bin/bash "${USERNAME}"
+RUN (userdel -r ubuntu || true) 2>/dev/null; \
+    (groupdel ubuntu || true) 2>/dev/null; \
+    getent group "${USER_GID}" >/dev/null 2>&1 || groupadd -g "${USER_GID}" "${USERNAME}"; \
+    id -u "${USERNAME}" >/dev/null 2>&1 || useradd -m -u "${USER_UID}" -g "${USER_GID}" -s /bin/bash "${USERNAME}"
 
 # Distro-agnostic bootstrap script (clones + chezmoi-applies the dotfiles).
 COPY --chown=${USER_UID}:${USER_GID} common/bootstrap-dotfiles.sh /usr/local/bin/langdev-bootstrap-dotfiles
@@ -201,8 +203,10 @@ COPY --from=env-build /opt/nvim /opt/nvim
 RUN ln -sf /opt/nvim/bin/nvim /usr/local/bin/nvim
 
 # Non-root user with a real home (Debian/Ubuntu: groupadd/useradd, not adduser).
-RUN groupadd -g "${USER_GID}" "${USERNAME}" \
- && useradd -m -u "${USER_UID}" -g "${USER_GID}" -s /bin/bash "${USERNAME}"
+RUN (userdel -r ubuntu || true) 2>/dev/null; \
+    (groupdel ubuntu || true) 2>/dev/null; \
+    getent group "${USER_GID}" >/dev/null 2>&1 || groupadd -g "${USER_GID}" "${USERNAME}"; \
+    id -u "${USERNAME}" >/dev/null 2>&1 || useradd -m -u "${USER_UID}" -g "${USER_GID}" -s /bin/bash "${USERNAME}"
 
 # Bring in the fully-populated home from env-build: the applied dotfiles
 # (~/.bashrc, ~/.config/tmux, ~/.config/nvim, ~/.config/shell/*, …) plus the
