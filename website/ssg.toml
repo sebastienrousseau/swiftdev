@@ -1,7 +1,7 @@
 site_name = "swiftdev"
 site_title = "swiftdev — Portable, Hardened Swift 6.0+ AI Developer Container"
 site_description = "Robust Swift container preloaded with Swift 6.0+ toolchain, SourceKit-LSP, swift-format, 4-pane TMUX IDE, and stdio Model Context Protocol (MCP) server."
-base_url = "https://sebastienrousseau.com/swiftdev/"
+base_url = "https://swiftdev.hyperbox.run/"
 language = "en-GB"
 
 content_dir = "content"
